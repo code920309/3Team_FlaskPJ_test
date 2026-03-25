@@ -1,0 +1,12 @@
+Flask==3.0.0
+flask-cors==4.0.0
+flask-limiter==3.7.0
+structlog==24.1.0
+sentry-sdk[flask]==2.0.0
+requests==2.31.0
+gevent==24.2.1
+SQLAlchemy==2.0.28
+psycopg2-binary==2.9.9
+gunicorn==21.2.0
+python-dotenv==1.0.1
+marshmallow==3.21.1

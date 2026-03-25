@@ -1,30 +1,49 @@
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, jsonify
 from flask_cors import CORS
+import structlog
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
+from extensions import limiter # Import shared limiter instance
+
+# Sentry initialization
+sentry_sdk.init(
+    dsn=os.getenv("SENTRY_DSN"),
+    integrations=[FlaskIntegration()],
+    traces_sample_rate=0.1,
+)
 
 app = Flask(__name__)
-CORS(app) # 프론트엔드(React)의 접근을 허용합니다.
+log = structlog.get_logger()
 
-# app.py 코드 윗부분에 추가
+def create_cors_origins() -> list[str]:
+    """Configure CORS allowed origins based on environment variables."""
+    flask_env = os.getenv("FLASK_ENV", "development")
+    if flask_env == "production":
+        vite_domain = os.getenv("VITE_DOMAIN")
+        if not vite_domain:
+            raise EnvironmentError(
+                "FLASK_ENV=production but VITE_DOMAIN is not set."
+            )
+        return [vite_domain]
+    return ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+
+# Middleware configurations
+CORS(app, origins=create_cors_origins(), supports_credentials=True)
+limiter.init_app(app) # Initialize limiter with flask app
+
 @app.route('/')
 def home():
-    return "백엔드 서버가 아주 잘 돌아가고 있습니다! (포트: 5000)"
+    return "백엔드 서버가 아주 잘 돌아가고 있습니다! (v3.0)"
 
-@app.route('/api/route', methods=['POST'])
-def get_route():
-    data = request.get_json()
-    print(f"검색 요청 도착: {data}")
+# Register Blueprints
+from routes.transit import transit_bp
+from routes.route import route_bp # Moved to routes/route.py for PRD compliance
+from routes.health import health_bp
 
-    # 테스트용 가짜 경로 데이터 (수원역 부근)
-    mock_path = [
-        [37.2664, 127.0002],
-        [37.2675, 127.0015],
-        [37.2685, 127.0025]
-    ]
-
-    return jsonify({
-        "status": "success",
-        "path": mock_path
-    })
+# Register all blueprints from PRD 8.2 logic
+for bp in [transit_bp, route_bp, health_bp]:
+    app.register_blueprint(bp)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=int(os.getenv("PORT", 5000)))
