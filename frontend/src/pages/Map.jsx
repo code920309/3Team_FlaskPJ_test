@@ -23,7 +23,7 @@ const MapPage = () => {
 
     const [center, setCenter] = useState({ lat: 37.2635727, lng: 127.0287149 });
     const [selectedElevator, setSelectedElevator] = useState(null);
-    
+
     // Zustand Stores
     const routeInfo = useUIStore((state) => state.routeInfo);
     const { isReportModalOpen, openReportModal, closeReportModal } = useUIStore();
@@ -56,18 +56,36 @@ const MapPage = () => {
         return () => clearInterval(timer);
     }, [loading, setDangerMarkers, cleanupOldMarkers]);
 
-    // 3. 경로 시각화 (Polyline용 좌표 변환)
+    // 3. 통합 경로 시각화 (휠체어/대중교통 하이브리드 대응)
     const linePath = React.useMemo(() => {
-        if (!routeInfo || !routeInfo.features) return [];
+        if (!routeInfo) return [];
         const path = [];
-        routeInfo.features.forEach(feature => {
-            if (feature.geometry.type === "LineString") {
-                feature.geometry.coordinates.forEach(coord => {
-                    path.push({ lat: coord[1], lng: coord[0] });
-                });
-            }
-        });
-        return path;
+
+        // CASE 1: 대중교통 데이터 (steps 기반)
+        if (routeInfo.steps) {
+            routeInfo.steps.forEach(step => {
+                if (step.path && Array.isArray(step.path)) {
+                    step.path.forEach(coord => {
+                        path.push({ lat: coord.lat, lng: coord.lng });
+                    });
+                }
+            });
+            return path;
+        }
+
+        // CASE 2: Tmap 휠체어 전용 데이터 (features 기반)
+        if (routeInfo.features) {
+            routeInfo.features.forEach(feature => {
+                if (feature.geometry.type === "LineString") {
+                    feature.geometry.coordinates.forEach(coord => {
+                        path.push({ lat: coord[1], lng: coord[0] });
+                    });
+                }
+            });
+            return path;
+        }
+
+        return [];
     }, [routeInfo]);
 
     if (loading) {
@@ -133,11 +151,10 @@ const MapPage = () => {
                     return (
                         <React.Fragment key={`ev-group-${i}`}>
                             <CustomOverlayMap position={{ lat: e.coordinates[0], lng: e.coordinates[1] }}>
-                                <div 
+                                <div
                                     onClick={() => setSelectedElevator(e)}
-                                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 border-white shadow-xl cursor-pointer transition-transform hover:scale-110 active:scale-95 ${
-                                        isNormal ? 'bg-green-500' : 'bg-red-500'
-                                    }`}
+                                    className={`w-10 h-10 rounded-full flex items-center justify-center border-2 border-white shadow-xl cursor-pointer transition-transform hover:scale-110 active:scale-95 ${isNormal ? 'bg-green-500' : 'bg-red-500'
+                                        }`}
                                 >
                                     <span className="text-[10px] font-bold text-white leading-none">
                                         {isNormal ? '정상' : '점검'}
@@ -178,18 +195,18 @@ const MapPage = () => {
 
                 {/* 실시간 위험 신고 마커 (F5 엔진 핵심) */}
                 {dangerMarkers.map((m) => (
-                    <DangerMarker 
-                        key={m.id} 
-                        marker={m} 
-                        onRemove={removeDangerMarker} 
+                    <DangerMarker
+                        key={m.id}
+                        marker={m}
+                        onRemove={removeDangerMarker}
                     />
                 ))}
             </Map>
 
             {/* 4. 신고 모달 (PRD 3.1) */}
-            <ReportModal 
-                isOpen={isReportModalOpen} 
-                onClose={closeReportModal} 
+            <ReportModal
+                isOpen={isReportModalOpen}
+                onClose={closeReportModal}
                 lat={center.lat}
                 lng={center.lng}
             />

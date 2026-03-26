@@ -10,11 +10,15 @@ const useUIStore = create((set) => ({
   endPoint: null,
   mapCenter: { lat: 37.2664, lng: 127.0002 },
   routeInfo: null,
+  wheelchairInfo: null,
+  transitInfo: null,
 
   setStartPoint: (point) => set({ startPoint: point }),
   setEndPoint: (point) => set({ endPoint: point }),
   setMapCenter: (center) => set({ mapCenter: center }),
   setRouteInfo: (info) => set({ routeInfo: info }),
+  setWheelchairInfo: (info) => set({ wheelchairInfo: info }),
+  setTransitInfo: (info) => set({ transitInfo: info }),
 
   // 2. 모달 상태 (신고하기)
   isReportModalOpen: false,

@@ -5,7 +5,7 @@ import useUIStore from '../store/useUIStore';
 import api from '../lib/api';
 
 export const useSafeRoute = () => {
-  const setRouteInfo = useUIStore((state) => state.setRouteInfo);
+  const setWheelchairInfo = useUIStore((state) => state.setWheelchairInfo);
   const setMapCenter = useUIStore((state) => state.setMapCenter);
 
   return useMutation({
@@ -16,8 +16,8 @@ export const useSafeRoute = () => {
 
     // 2. 통신 성공 시 실행될 로직
     onSuccess: (data) => {
-      // 백엔드에서 준 데이터(data.path 등)를 창고에 저장
-      setRouteInfo(data);
+      // 휠체어 전용 경로 저장
+      setWheelchairInfo(data);
 
       // 검색 결과의 첫 번째 지점으로 지도의 중심을 이동시킵니다.
       if (data.path && data.path.length > 0) {
