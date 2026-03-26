@@ -1,18 +1,15 @@
 import { useMutation } from '@tanstack/react-query';
-// 수정: 우리가 맞춘 스토어 이름인 useUIStore로 가져옵니다.
 import useUIStore from '../store/useUIStore';
 
 export const useSafeRoute = () => {
-  // 창고에서 데이터를 저장하는 함수를 가져옵니다.
   const setRouteInfo = useUIStore((state) => state.setRouteInfo);
   const setMapCenter = useUIStore((state) => state.setMapCenter);
 
-  // useMutation은 '데이터를 생성/검색'하는 요청에 최적화되어 있습니다.
   return useMutation({
     // 1. 실제 백엔드와 통신하는 함수
     mutationFn: async ({ start, end }) => {
-      // 수정: 비교 기능이 빠졌으므로 일반 경로 API로 요청을 보냅니다.
-      const response = await fetch('/api/route', {
+      // API 주소를 백엔드 Blueprint 라우팅에 맞게 수정 (/api/route/calculate 가정)
+      const response = await fetch('/api/route/calculate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -27,20 +24,61 @@ export const useSafeRoute = () => {
         throw new Error('경로를 불러오는 데 실패했습니다.');
       }
 
-      return response.json();
-    },
+      const result = await response.json();
 
-    // 2. 통신 성공 시 실행될 로직
-    onSuccess: (data) => {
-      // 백엔드에서 준 데이터(data.path 등)를 창고에 저장
-      setRouteInfo(data);
-
-      // 검색 결과의 첫 번째 지점으로 지도의 중심을 이동시킵니다.
-      if (data.path && data.path.length > 0) {
-        setMapCenter(data.path[0]);
+      // 백엔드 에러 처리
+      if (result.error) {
+        throw new Error(result.error);
       }
 
-      console.log("경로 탐색 성공:", data);
+      // 백엔드에서 넘겨준 원본 Tmap 데이터 반환
+      return result.data.route_data;
+    },
+
+    // 2. 통신 성공 시 실행될 로직 (데이터 정제 및 변환)
+    onSuccess: (tmapData) => {
+      const features = tmapData.features || [];
+      let totalTime = 0;
+      let totalDistance = 0;
+      const kakaoPath = [];
+
+      features.forEach((feature, index) => {
+        // 첫 번째 feature의 properties에서 총 소요시간/거리 추출
+        if (index === 0 && feature.properties) {
+          totalTime = feature.properties.totalTime || 0; // 초 단위
+          totalDistance = feature.properties.totalDistance || 0; // 미터 단위
+        }
+
+        const geometry = feature.geometry;
+
+        // 카카오맵 폴리라인 렌더링을 위한 좌표 변환
+        if (geometry.type === 'LineString') {
+          geometry.coordinates.forEach((coord) => {
+            // Tmap [lng, lat] 형식을 Kakao { lat, lng } 객체로 변환
+            kakaoPath.push({ lat: coord[1], lng: coord[0] });
+          });
+        } else if (geometry.type === 'Point') {
+           // 분기점 등의 Point 좌표
+           kakaoPath.push({ lat: geometry.coordinates[1], lng: geometry.coordinates[0] });
+        }
+      });
+
+      // 정제된 최종 데이터를 객체로 구성
+      const routeResult = {
+        path: kakaoPath,
+        totalTime: Math.ceil(totalTime / 60), // 초 -> 분 단위로 변환
+        totalDistance: totalDistance,
+      };
+
+      // 변환 완료된 데이터를 스토어에 저장
+      setRouteInfo(routeResult);
+
+      // 검색 결과의 첫 번째 지점으로 지도의 중심을 이동
+      if (kakaoPath.length > 0) {
+        setMapCenter(kakaoPath[0]);
+      }
+
+      console.log("휠체어 경로 탐색 및 변환 성공:", routeResult);
     },
 
     // 3. 통신 실패 시 실행될 로직

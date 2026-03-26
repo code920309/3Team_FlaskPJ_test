@@ -1,70 +1,54 @@
-import React, { useEffect } from 'react';
-import { MapContainer, TileLayer, useMap, Polyline } from 'react-leaflet';
-import L from 'leaflet'; // Leaflet 직접 참조 추가
-import 'leaflet/dist/leaflet.css';
+import React from 'react';
+// PRD V3.0: Kakao Maps SDK 사용 및 MarkerClusterer 기본 적용
+import { Map, Polyline, MapMarker, MarkerClusterer } from 'react-kakao-maps-sdk';
 import useUIStore from '../../store/useUIStore';
 
-// --- Leaflet 기본 아이콘 경로 설정 (아이콘 깨짐 방지) ---
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconUrl: markerIcon,
-  iconRetinaUrl: markerIcon2x,
-  shadowUrl: markerShadow,
-});
-
-/**
- * 지도의 중심 좌표나 줌 레벨이 바뀔 때 실제 지도를 움직여주는 헬퍼 컴포넌트
- */
-function MapController({ center, zoom }) {
-  const map = useMap();
-  useEffect(() => {
-    if (center) {
-      map.setView(center, zoom);
-    }
-  }, [center, zoom, map]);
-  return null;
-}
-
-/**
- * SafeMap 컴포넌트
- * 기본 내보내기(default export)가 정확히 명시되어 있습니다.
- */
-const SafeMap = () => {
+export default function SafeMap() {
   // 상태 창고(useUIStore)에서 데이터 가져오기
   const mapCenter = useUIStore((state) => state.mapCenter);
   const routeInfo = useUIStore((state) => state.routeInfo);
-  const defaultZoom = 15;
+  const routePoints = useUIStore((state) => state.routePoints); // MapSearch에서 저장한 출발/도착 좌표
+
+  // 중심 좌표가 없을 경우의 기본값 (수원역 기준)
+  const defaultCenter = mapCenter || { lat: 37.266, lng: 126.999 };
 
   return (
     <div className="w-full h-full relative">
-      <MapContainer
-        center={mapCenter}
-        zoom={defaultZoom}
+      <Map
+        center={defaultCenter}
+        level={4} // 카카오맵 기본 줌 레벨 (1~14, 숫자가 작을수록 확대)
         className="w-full h-full z-0"
-        scrollWheelZoom={true}
+        isPanto={true} // 부드러운 중심 이동 애니메이션 (Leaflet의 MapController 역할 대체)
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-
-        {/* 중심 좌표가 바뀌면 지도를 이동시킵니다 */}
-        <MapController center={mapCenter} zoom={defaultZoom} />
-
-        {/* 경로 데이터(routeInfo.path)가 존재할 때만 지도 위에 파란색 선을 그립니다 */}
-        {routeInfo && routeInfo.path && routeInfo.path.length > 0 && (
+        {/* 1. 휠체어 안전 경로 폴리라인 렌더링 */}
+        {routeInfo?.path && routeInfo.path.length > 0 && (
           <Polyline
-            positions={routeInfo.path}
-            pathOptions={{ color: '#3b82f6', weight: 6, opacity: 0.8 }}
+            path={routeInfo.path}
+            strokeWeight={6}
+            strokeColor="#3b82f6"
+            strokeOpacity={0.8}
+            strokeStyle="solid"
           />
         )}
-      </MapContainer>
+
+        {/* 2. 출발지 및 도착지 마커 렌더링 (PRD Section 4: MarkerClustering 사용) */}
+        <MarkerClusterer averageCenter={true} minLevel={10}>
+          {routePoints?.start && (
+            <MapMarker
+              position={routePoints.start}
+              title="출발지"
+              // 접근성 향상을 위한 마커 정보 (필요시 커스텀 이미지로 교체 가능)
+            />
+          )}
+
+          {routePoints?.end && (
+            <MapMarker
+              position={routePoints.end}
+              title="도착지"
+            />
+          )}
+        </MarkerClusterer>
+      </Map>
     </div>
   );
-};
-
-export default SafeMap; // 명시적 기본 내보내기
+}
