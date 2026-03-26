@@ -123,15 +123,40 @@ const MapPage = () => {
             >
                 <ZoomControl position="RIGHT" />
 
-                {/* 경로 시각화 */}
+                {/* 경로 시각화 및 출발/도착 지점 표시 */}
                 {linePath.length > 0 && (
-                    <Polyline
-                        path={linePath}
-                        strokeWeight={6}
-                        strokeColor="#3b82f6"
-                        strokeOpacity={0.8}
-                        strokeStyle="solid"
-                    />
+                    <>
+                        <Polyline
+                            path={linePath}
+                            strokeWeight={6}
+                            strokeColor="#3b82f6"
+                            strokeOpacity={0.8}
+                            strokeStyle="solid"
+                        />
+                        {/* 출발지 커스텀 내비 핀 (파란색) */}
+                        <CustomOverlayMap position={linePath[0]} yAnchor={1.1}>
+                            <div className="relative flex flex-col items-center">
+                                {/* 상단 원형 + 글씨 */}
+                                <div className="w-12 h-12 bg-blue-600 rounded-full shadow-2xl border-2 border-white flex items-center justify-center z-10">
+                                    <span className="text-white text-[12px] font-black leading-none">출발</span>
+                                </div>
+                                {/* 하단 꼬리 모양 (삼각형) */}
+                                <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[12px] border-t-blue-600 mt-[-2px] drop-shadow-lg"></div>
+                            </div>
+                        </CustomOverlayMap>
+
+                        {/* 도착지 커스텀 내비 핀 (빨간색) */}
+                        <CustomOverlayMap position={linePath[linePath.length - 1]} yAnchor={1.1}>
+                            <div className="relative flex flex-col items-center">
+                                {/* 상단 원형 + 글씨 */}
+                                <div className="w-12 h-12 bg-red-600 rounded-full shadow-2xl border-2 border-white flex items-center justify-center z-10">
+                                    <span className="text-white text-[12px] font-black leading-none">도착</span>
+                                </div>
+                                {/* 하단 꼬리 모양 (삼각형) */}
+                                <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[12px] border-t-red-600 mt-[-2px] drop-shadow-lg"></div>
+                            </div>
+                        </CustomOverlayMap>
+                    </>
                 )}
 
                 {/* 배리어프리 베뉴 (클러스터러) */}
