@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom'; // 1. 페이지 이동을 위한 라우터 훅 추가
+import { useNavigate } from 'react-router-dom';
 import {
   MapPin, AlertCircle, Search, Settings, ArrowRight,
   Wrench, ShieldCheck
@@ -8,16 +8,15 @@ import {
 import { twMerge } from "tailwind-merge";
 import { clsx } from "clsx";
 
-// 2. 우리가 만든 전역 스토어에서 상태를 가져옵니다.
-// (주의: isReportModalOpen, openReportModal도 store/useUIStore.js 안에 추가해주시면 좋습니다!)
 import useUIStore from '../store/useUIStore';
+import ReportModal from '../components/F-sse/ReportModal';
 
 /** * Utils: Tailwind 클래스 병합 */
 function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-// --- 컴포넌트 라이브러리 ---
+// ... Header, Hero, FeatureSection 컴포넌트들 ... (기존과 동일하게 UIStore 구독 중)
 
 function Header() {
   return (
@@ -42,7 +41,7 @@ function Header() {
 function Hero() {
   const openReportModal = useUIStore((state) => state.openReportModal);
   const shouldReduceMotion = useReducedMotion();
-  const navigate = useNavigate(); // 라우터 네비게이션 객체 생성
+  const navigate = useNavigate();
 
   return (
     <section className="relative h-[640px] flex items-center overflow-hidden pt-16">
@@ -57,10 +56,10 @@ function Hero() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 w-full">
         <motion.div
-          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="max-w-2xl text-white"
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-2xl text-white"
         >
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-600/30 border border-blue-400/30 backdrop-blur-sm mb-6">
             <span className="text-[11px] font-bold text-blue-200 uppercase tracking-widest">Suwon Barrier-Free Map</span>
@@ -76,7 +75,6 @@ function Hero() {
           </p>
 
           <div className="flex flex-wrap gap-4">
-            {/* 3. 지도 보기 버튼 클릭 시 /map 경로로 이동하도록 onClick 이벤트 추가 */}
             <button
               onClick={() => navigate('/map')}
               className="min-w-[140px] h-14 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
@@ -105,7 +103,7 @@ const features = [
 
 function FeatureSection() {
   const openReportModal = useUIStore((state) => state.openReportModal);
-  const navigate = useNavigate(); // 하단 카드에서도 지도로 넘어갈 수 있게 추가
+  const navigate = useNavigate();
 
   return (
     <section className="py-24 bg-gray-50">
@@ -120,7 +118,6 @@ function FeatureSection() {
               <p className="text-gray-500 text-sm leading-relaxed mb-8">{feature.description}</p>
               <button
                 disabled={feature.status === "pending"}
-                // 4. 리포트가 아니면 지도 화면으로 이동
                 onClick={feature.isReport ? openReportModal : () => navigate('/map')}
                 className={cn(
                   "text-sm font-bold flex items-center gap-1 transition-all",
@@ -138,6 +135,8 @@ function FeatureSection() {
 }
 
 export default function Home() {
+  const { isReportModalOpen, closeReportModal, mapCenter } = useUIStore();
+
   return (
     <div className="min-h-screen bg-white font-sans">
       <Header />
@@ -145,6 +144,15 @@ export default function Home() {
         <Hero />
         <FeatureSection />
       </main>
+      
+      {/* 5. 실시간 위험 신고 모달 전역 렌더링 */}
+      <ReportModal 
+        isOpen={isReportModalOpen} 
+        onClose={closeReportModal}
+        lat={mapCenter.lat}
+        lng={mapCenter.lng}
+      />
+
       <footer className="py-12 border-t border-gray-100 text-center text-sm text-gray-400">
         © 2026 Modu-Gil. 수원시 휠체어 통합 내비게이션.
       </footer>

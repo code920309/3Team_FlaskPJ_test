@@ -1,132 +1,163 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Map, MapMarker, MarkerClusterer, Polyline, ZoomControl, useKakaoLoader } from 'react-kakao-maps-sdk';
+import { ShieldAlert, Loader2 } from 'lucide-react';
+
 import useUIStore from '../store/useUIStore';
+import useMapStore from '../store/useMapStore';
+
 import MapSearch from '../components/B-map/MapSearch';
+import ReportModal from '../components/F-sse/ReportModal';
+import DangerMarker from '../components/F-sse/DangerMarker';
+
 import { usePlaces } from '../hooks/usePlaces';
 import { useElevators } from '../hooks/useElevators';
 import { useReportsRealtime } from '../hooks/useReportsRealtime';
+import api from '../lib/api';
 
 const MapPage = () => {
-    const mapContainer = useRef(null);
-    const [map, setMap] = useState(null);
+    // 1. 카카오 지도 SDK 로드 (PRD 4.2 안정성 확보)
+    const [loading] = useKakaoLoader({
+        appkey: import.meta.env.VITE_KAKAO_APP_KEY,
+        libraries: ["services", "clusterer"],
+    });
+
     const [center, setCenter] = useState({ lat: 37.2635727, lng: 127.0287149 });
     
-    // Zustand Store
+    // Zustand Stores
     const routeInfo = useUIStore((state) => state.routeInfo);
-    const polylineRef = useRef(null);
+    const { isReportModalOpen, openReportModal, closeReportModal } = useUIStore();
+    const { dangerMarkers, setDangerMarkers, cleanupOldMarkers, removeDangerMarker } = useMapStore();
 
+    // Data Hooks
     const { data: placesData } = usePlaces(center.lat, center.lng);
     const { data: elevatorsData } = useElevators();
     useReportsRealtime();
 
-    // 2. 지도 초기화
+    // 2. 초기 신고 데이터 페칭 및 자동 소멸 타이머
     useEffect(() => {
-        const apiKey = import.meta.env.VITE_KAKAO_APP_KEY;
-        const scriptId = 'kakao-maps-sdk';
+        if (loading) return;
 
-        const initMap = () => {
-            if (!window.kakao || !window.kakao.maps) return;
-            window.kakao.maps.load(() => {
-                const options = {
-                    center: new window.kakao.maps.LatLng(center.lat, center.lng),
-                    level: 3
-                };
-                const kakaoMap = new window.kakao.maps.Map(mapContainer.current, options);
-                setMap(kakaoMap);
-                const zoomControl = new window.kakao.maps.ZoomControl();
-                kakaoMap.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
-            });
-        };
-
-        if (window.kakao && window.kakao.maps) {
-            initMap();
-        } else {
-            if (!document.getElementById(scriptId)) {
-                const script = document.createElement('script');
-                script.id = scriptId;
-                script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services,clusterer&autoload=false`;
-                script.async = true;
-                script.onload = initMap;
-                document.head.appendChild(script);
+        const fetchInitialReports = async () => {
+            try {
+                const { data } = await api.get('/api/reports');
+                if (data.reports) setDangerMarkers(data.reports);
+            } catch (err) {
+                console.error("Failed to fetch reports:", err);
             }
-        }
-    }, []);
+        };
+        fetchInitialReports();
 
-    // 3. Tmap 경로 그리기 (Polyline)
-    useEffect(() => {
-        if (!map || !routeInfo || !routeInfo.features) return;
+        // 1분마다 오래된 마커 청소 (PRD 3.4)
+        const timer = setInterval(() => {
+            cleanupOldMarkers();
+        }, 60000);
 
-        // 기존 경로 삭제
-        if (polylineRef.current) {
-            polylineRef.current.setMap(null);
-        }
+        return () => clearInterval(timer);
+    }, [loading, setDangerMarkers, cleanupOldMarkers]);
 
+    // 3. 경로 시각화 (Polyline용 좌표 변환)
+    const linePath = React.useMemo(() => {
+        if (!routeInfo || !routeInfo.features) return [];
         const path = [];
         routeInfo.features.forEach(feature => {
             if (feature.geometry.type === "LineString") {
                 feature.geometry.coordinates.forEach(coord => {
-                    // Tmap [lng, lat] -> Kakao [lat, lng]
-                    path.push(new window.kakao.maps.LatLng(coord[1], coord[0]));
+                    path.push({ lat: coord[1], lng: coord[0] });
                 });
             }
         });
+        return path;
+    }, [routeInfo]);
 
-        if (path.length > 0) {
-            const polyline = new window.kakao.maps.Polyline({
-                path: path,
-                strokeWeight: 6,
-                strokeColor: '#3b82f6',
-                strokeOpacity: 0.8,
-                strokeStyle: 'solid'
-            });
-
-            polyline.setMap(map);
-            polylineRef.current = polyline;
-
-            // 지도 중심 이동 및 확대 레벨 조정
-            map.setCenter(path[0]);
-            map.setLevel(4);
-        }
-    }, [map, routeInfo]);
-
-    // 4. 배리어프리 마커
-    useEffect(() => {
-        if (!map || !placesData) return;
-        const clusterer = new window.kakao.maps.MarkerClusterer({
-            map: map,
-            averageCenter: true,
-            minLevel: 5
-        });
-        const markers = (placesData.features || []).map(feature => {
-            const [lng, lat] = feature.geometry.coordinates;
-            return new window.kakao.maps.Marker({
-                position: new window.kakao.maps.LatLng(lat, lng),
-                title: feature.properties.name
-            });
-        });
-        clusterer.addMarkers(markers);
-        return () => clusterer.clear();
-    }, [map, placesData]);
-
-    // 5. 엘리베이터 마커
-    useEffect(() => {
-        if (!map || !elevatorsData) return;
-        (elevatorsData.elevators || []).forEach(elevator => {
-            const [lng, lat] = elevator.coordinates;
-            new window.kakao.maps.Marker({
-                position: new window.kakao.maps.LatLng(lat, lng),
-                map: map,
-                title: `${elevator.name} (${elevator.status})`
-            });
-        });
-    }, [map, elevatorsData]);
+    if (loading) {
+        return (
+            <div className="w-full h-screen bg-white flex flex-col items-center justify-center gap-4">
+                <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+                <p className="font-bold text-gray-600">회장님, 수원시 정밀 지도를 불러오고 있습니다...</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="relative w-full h-screen bg-gray-100">
+        <div className="relative w-full h-screen bg-gray-100 overflow-hidden">
+            {/* 1. 상단 검색창 컴포넌트 */}
             <MapSearch />
-            <div 
-                ref={mapContainer}
+
+            {/* 2. 실시간 위험 신고 버튼 (PRD 3.1) */}
+            <button
+                onClick={openReportModal}
+                className="absolute bottom-10 right-6 z-[1000] flex items-center gap-2 px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-2xl transition-all transform hover:scale-105 active:scale-95 font-bold group"
+            >
+                <ShieldAlert size={20} className="group-hover:animate-pulse" />
+                <span>위험 신고</span>
+                <div className="flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-white/20 rounded-full text-[10px]">
+                    {dangerMarkers.length}
+                </div>
+            </button>
+
+            {/* 3. 메인 지도 영역 */}
+            <Map
+                center={center}
                 className="w-full h-full"
-                style={{ height: '100vh' }}
+                level={3}
+                onCenterChanged={(map) => {
+                    const latlng = map.getCenter();
+                    setCenter({ lat: latlng.getLat(), lng: latlng.getLng() });
+                }}
+            >
+                <ZoomControl position="RIGHT" />
+
+                {/* 경로 시각화 */}
+                {linePath.length > 0 && (
+                    <Polyline
+                        path={linePath}
+                        strokeWeight={6}
+                        strokeColor="#3b82f6"
+                        strokeOpacity={0.8}
+                        strokeStyle="solid"
+                    />
+                )}
+
+                {/* 배리어프리 베뉴 (클러스터러) */}
+                <MarkerClusterer averageCenter={true} minLevel={5}>
+                    {placesData?.features?.map((f, i) => (
+                        <MapMarker
+                            key={`place-${i}`}
+                            position={{ lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] }}
+                            title={f.properties.name}
+                        />
+                    ))}
+                </MarkerClusterer>
+
+                {/* 엘리베이터 마커 */}
+                {elevatorsData?.elevators?.map((e, i) => (
+                    <MapMarker
+                        key={`ev-${i}`}
+                        position={{ lat: e.coordinates[1], lng: e.coordinates[0] }}
+                        title={`${e.name} (${e.status})`}
+                        image={{
+                            src: "https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/markerStar.png",
+                            size: { width: 24, height: 35 }
+                        }}
+                    />
+                ))}
+
+                {/* 실시간 위험 신고 마커 (F5 엔진 핵심) */}
+                {dangerMarkers.map((m) => (
+                    <DangerMarker 
+                        key={m.id} 
+                        marker={m} 
+                        onRemove={removeDangerMarker} 
+                    />
+                ))}
+            </Map>
+
+            {/* 4. 신고 모달 (PRD 3.1) */}
+            <ReportModal 
+                isOpen={isReportModalOpen} 
+                onClose={closeReportModal} 
+                lat={center.lat}
+                lng={center.lng}
             />
         </div>
     );

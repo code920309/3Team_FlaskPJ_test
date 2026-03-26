@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { useQueryClient } from "@tanstack/react-query";
+import useMapStore from "../store/useMapStore";
 
 /**
  * useReportsRealtime Hook
@@ -8,8 +9,10 @@ import { useQueryClient } from "@tanstack/react-query";
  */
 export function useReportsRealtime() {
   const queryClient = useQueryClient();
+  const addDangerMarker = useMapStore((state) => state.addDangerMarker);
 
   useEffect(() => {
+    // 1. WebSocket 구독 설정
     // reports 테이블의 INSERT 이벤트를 감시
     const channel = supabase
       .channel("reports-changes")
@@ -18,8 +21,10 @@ export function useReportsRealtime() {
         { event: "INSERT", schema: "public", table: "reports" },
         (payload) => {
           console.log("New report received:", payload);
-          // TanStack Query 캐시를 무효화하여 자동 리프레시 유도
+          // (1) TanStack Query 캐시를 무효화하여 자동 리프레시 유도
           queryClient.invalidateQueries({ queryKey: ["reports"] });
+          // (2) PRD 9.1: Zustand 스토어에 즉시 마커 추가 (API 지연 없음)
+          addDangerMarker(payload.new);
         }
       )
       .subscribe();
@@ -28,5 +33,5 @@ export function useReportsRealtime() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, addDangerMarker]);
 }
